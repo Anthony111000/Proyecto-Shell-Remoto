@@ -1,68 +1,35 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <netinet/in.h> //structure for storing address information 
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <sys/socket.h> //for socket APIs 
+#include <sys/types.h> 
 
-#define PORT 5000
-#define BUFFER_SIZE 1024
+int main(int argc, char const* argv[]) 
+{ 
+	int sockD = socket(AF_INET, SOCK_STREAM, 0); 
 
-int main() {
-    int sock_fd;
-    struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
-    char response[BUFFER_SIZE];
+	struct sockaddr_in servAddr; 
 
-    // Crear socket
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error al crear socket");
-        exit(EXIT_FAILURE);
-    }
+	servAddr.sin_family = AF_INET; 
+	servAddr.sin_port 
+		= htons(9001); // use some unused port number 
+	servAddr.sin_addr.s_addr = INADDR_ANY; 
 
-    // Configurar la dirección del servidor
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
+	int connectStatus 
+		= connect(sockD, (struct sockaddr*)&servAddr, 
+				sizeof(servAddr)); 
 
-    if (inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) <= 0) {
-        perror("Dirección inválida o no soportada");
-        close(sock_fd);
-        exit(EXIT_FAILURE);
-    }
+	if (connectStatus == -1) { 
+		printf("Error...\n"); 
+	} 
 
-    // Conectar al servidor
-    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error al conectar con el servidor");
-        close(sock_fd);
-        exit(EXIT_FAILURE);
-    }
+	else { 
+		char strData[255]; 
 
-    printf("Conectado al servidor.\n");
+		recv(sockD, strData, sizeof(strData), 0); 
 
-    // Enviar comandos y recibir respuestas
-    while (1) {
-        printf("Ingresa un comando para ejecutar (o 'salir' para terminar): ");
-        fgets(buffer, BUFFER_SIZE, stdin);
+		printf("Message: %s\n", strData); 
+	} 
 
-        // Eliminar salto de línea del comando
-        buffer[strcspn(buffer, "\n")] = '\0';
-
-        if (strcmp(buffer, "salir") == 0) {
-            printf("Cerrando conexión...\n");
-            break;
-        }
-
-        // Enviar comando al servidor
-        send(sock_fd, buffer, strlen(buffer), 0);
-
-        // Recibir la respuesta del servidor
-        memset(response, 0, BUFFER_SIZE);
-        int bytes_received = recv(sock_fd, response, BUFFER_SIZE - 1, 0);
-        if (bytes_received > 0) {
-            response[bytes_received] = '\0';
-            printf("Respuesta del servidor:\n%s\n", response);
-        }
-    }
-
-    close(sock_fd);
-    return 0;
+	return 0; 
 }
