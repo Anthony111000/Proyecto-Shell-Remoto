@@ -27,12 +27,15 @@ int main(int argc, char const* argv[])
 		sizeof(servAddr)); 
 
 	//adding multiple execute
-	do{
+	
 		// listen for connections 
 	listen(servSockD, 1); 
 
 	// integer to hold client socket. 
-	int clientSocket = accept(servSockD, NULL, NULL); 
+	int clientSocket = accept(servSockD, NULL, NULL);
+	do{
+	//recieve message from the client socket
+	printf("%ld",recv(servSockD,serMsg,sizeof(serMsg),0)); 
 
 	// send's messages to client socket 
 	send(clientSocket, serMsg, sizeof(serMsg), 0); 
