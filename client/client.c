@@ -7,7 +7,10 @@
 #include <pthread.h>
 
 
-char senter(char *strData,int sockD){
+void *senter(void*sockDe){
+    char strData[326];
+    char strDataI[326];
+    int sockD = *(int *)sockDe;
 do {//ciclo que repite  ejecucion hasta comando leave
     printf("Introduce un mensaje: ");
     fgets(strData, sizeof(strData), stdin);
@@ -16,8 +19,8 @@ do {//ciclo que repite  ejecucion hasta comando leave
     if (strcmp(strData, "leave") == 0) {
 	    break; // Salir del ciclo si el mensaje es "leave"
         }
-    recv(sockD, strData, sizeof(strData), 0); // Recibir respuesta
-    printf("Servidor: %s\n", strData);
+    recv(sockD, strDataI, sizeof(strDataI), 0); // Recibir respuesta
+    printf("Servidor: %s\n", strDataI);
     } while (1);
 }
 
@@ -27,7 +30,7 @@ do {//ciclo que repite  ejecucion hasta comando leave
 
 
 int main(int argc, char const* argv[]) {
-    char strData[326];
+    pthread_t job;
     int sockD = socket(AF_INET, SOCK_STREAM, 0); 
 
     struct sockaddr_in servAddr; 
@@ -43,7 +46,8 @@ int main(int argc, char const* argv[]) {
     } 
 
     printf("Conectado al servidor.\nEscribe 'leave' para salir.\n");
-    senter(strData,sockD);
+    pthread_create(&job,NULL,senter,&sockD);
+    pthread_join(job,NULL);
     //ejecuciones
 
     close(sockD); // Cerrar socket

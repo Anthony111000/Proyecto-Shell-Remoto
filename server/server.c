@@ -41,7 +41,8 @@ int main(int argc, char const* argv[]) {
 
             // Enviar respuesta
             char respuesta[] = "Mensaje recibido";
-            send(clientSocket, respuesta, strlen(respuesta) + 1, 0);
+	    printf("%d",bytesReceived);
+	    send(clientSocket, respuesta, strlen(respuesta) + 1, 0);
         }
     } while (1);
 
