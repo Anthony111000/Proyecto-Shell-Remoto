@@ -44,18 +44,26 @@ int main(int argc, char const *argv[]) {
             pid_t pid = fork();
             if (pid == 0) { // Proceso hijo
                 printf("Ejecutando comando: %s\n", serMsg);
-                execlp(serMsg, serMsg, (char *)NULL);
-                perror("Error ejecutando el comando");
-                exit(EXIT_FAILURE);
+
+                // Ejecutar el comando y capturar la salida
+                FILE *fp = popen(serMsg, "r");
+                if (fp == NULL) {
+                    perror("Error ejecutando el comando");
+                    exit(EXIT_FAILURE);
+                }
+
+                // Leer la salida del comando
+                char output[1024];
+                while (fgets(output, sizeof(output), fp) != NULL) {
+                    send(clientSocket, output, strlen(output), 0);  // Enviar la salida al cliente
+                }
+                fclose(fp);
+                exit(EXIT_SUCCESS);  // Finalizar el proceso hijo
             } else if (pid < 0) { // Error en fork
                 perror("Error al crear el proceso");
             } else { // Proceso padre
                 wait(NULL); // Esperar al proceso hijo
             }
-
-            // Enviar confirmación al cliente
-            char respuesta[] = "Comando ejecutado";
-            send(clientSocket, respuesta, strlen(respuesta) + 1, 0);
         }
     } while (1);
 
