@@ -1,83 +1,121 @@
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <arpa/inet.h>
+#include <pthread.h>
 
-#define PORT 5000
-#define BUFFER_SIZE 1024
+// Variable global para llevar el conteo de clientes
+int clientCounter = 1;
 
-int main() {
-    int server_fd, client_fd;
-    struct sockaddr_in address;
-    char buffer[BUFFER_SIZE];
-    char result[BUFFER_SIZE];
+// Estructura para almacenar la info del cliente
+typedef struct {
+    int socket;
+    int id;
+} ClientInfo;
 
-    // Crear socket
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("Error al crear socket");
-        exit(EXIT_FAILURE);
-    }
+// Función para manejar la conexión de un cliente en un hilo
+void *handleClient(void *arg) {
+    ClientInfo *clientInfo = (ClientInfo *)arg;
+    int clientSocket = clientInfo->socket;
+    int clientId = clientInfo->id;
+    char serMsg[255];
 
-    // Configurar la dirección del servidor
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    // Mensaje de cliente conectado
+    printf("Cliente %d conectado.\n", clientId);
 
-    // Asociar socket a puerto
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("Error en bind");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+    do {
+        memset(serMsg, 0, sizeof(serMsg)); // Limpiar buffer
+        int bytesReceived = recv(clientSocket, serMsg, sizeof(serMsg), 0);
 
-    // Escuchar conexiones
-    if (listen(server_fd, 1) < 0) {
-        perror("Error en listen");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+        if (bytesReceived > 0) {
+            printf("Cliente %d: %s\n", clientId, serMsg);
 
-    printf("Servidor escuchando en el puerto %d...\n", PORT);
+            if (strcmp(serMsg, "leave") == 0) {
+                printf("El cliente %d se ha desconectado.\n", clientId);
+                break;
+            }
 
-    // Aceptar conexiones entrantes
-    socklen_t addr_len = sizeof(address);
-    if ((client_fd = accept(server_fd, (struct sockaddr *)&address, &addr_len)) < 0) {
-        perror("Error al aceptar conexión");
-        close(server_fd);
-        exit(EXIT_FAILURE);
-    }
+            printf("Cliente %d ejecutando comando: %s\n", clientId, serMsg);
 
-    printf("Cliente conectado.\n");
+            // Ejecutar el comando y capturar la salida
+            FILE *fp = popen(serMsg, "r");
+            if (fp == NULL) {
+                perror("Error ejecutando el comando");
+                break;
+            }
 
-    // Recibir y procesar comandos
-    while (1) {
-        memset(buffer, 0, BUFFER_SIZE);
-        int bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
-        if (bytes_received <= 0) {
-            printf("Conexión cerrada por el cliente.\n");
-            break;
+            // Leer la salida del comando
+            char output[1024];
+            while (fgets(output, sizeof(output), fp) != NULL) {
+                send(clientSocket, output, strlen(output), 0);  // Enviar la salida al cliente
+            }
+            pclose(fp);
         }
-        buffer[bytes_received] = '\0';
-        printf("Comando recibido: %s\n", buffer);
+    } while (1);
 
-        // Ejecutar el comando y capturar la salida
-        FILE *fp = popen(buffer, "r");
-        if (fp == NULL) {
-            perror("Error al ejecutar comando");
+    close(clientSocket); // Cerrar el socket del cliente
+    free(clientInfo); // Liberar memoria asignada al socket
+    pthread_exit(NULL); // Terminar el hilo
+}
+
+int main(int argc, char const *argv[]) {
+    int servSockD = socket(AF_INET, SOCK_STREAM, 0);
+    if (servSockD == -1) {
+        perror("Error al crear el socket del servidor");
+        return -1;
+    }
+
+    struct sockaddr_in servAddr;
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(9001);
+    servAddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(servSockD, (struct sockaddr *)&servAddr, sizeof(servAddr)) == -1) {
+        perror("Error al enlazar el socket");
+        return -1;
+    }
+
+    if (listen(servSockD, 5) == -1) {
+        perror("Error al escuchar en el socket");
+        return -1;
+    }
+
+    printf("Esperando conexiones...\n");
+
+    while (1) {
+        // Asigna memoria para la estructura del cliente
+        ClientInfo *clientInfo = malloc(sizeof(ClientInfo));
+        if (clientInfo == NULL) {
+            perror("Error al asignar memoria para el cliente");
+            continue;
+        }
+        
+        // Acepta la conexion del cliente
+        clientInfo->socket = accept(servSockD, NULL, NULL);
+        if (clientInfo->socket == -1) {
+            perror("Error al aceptar la conexión");
+            free(clientInfo);
             continue;
         }
 
-        memset(result, 0, BUFFER_SIZE);
-        fread(result, 1, BUFFER_SIZE - 1, fp);
-        pclose(fp);
+	// Asigna un ID unico al cliente
+	clientInfo->id = clientCounter++;
 
-        // Enviar resultado al cliente
-        send(client_fd, result, strlen(result), 0);
+	// Crea un hilo para manejar al cliente
+        pthread_t threadID;
+        if (pthread_create(&threadID, NULL, handleClient, clientInfo) != 0) {
+            perror("Error al crear el hilo");
+	    close(clientInfo->socket);
+            free(clientInfo);
+            continue;
+        }
+
+        pthread_detach(threadID); // Separa el hilo para manejo independiente
     }
 
-    close(client_fd);
-    close(server_fd);
+    close(servSockD); // Cerrar el socket del servidor
     return 0;
 }
-

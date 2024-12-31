@@ -1,68 +1,56 @@
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <pthread.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 
-#define PORT 5000
-#define BUFFER_SIZE 1024
+void *senter(void* sockDe) {
+    char strData[326];
+    char strDataI[326];
+    int sockD = *(int *)sockDe;
 
-int main() {
-    int sock_fd;
-    struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
-    char response[BUFFER_SIZE];
+    do {
+        // Pide al usuario un comando para enviar
+        printf("Introduce un mensaje: ");
+        fgets(strData, sizeof(strData), stdin);
+        strData[strcspn(strData, "\n")] = '\0'; // Elimina el salto de línea
+        send(sockD, strData, strlen(strData) + 1, 0); // Envia el comando al servidor
 
-    // Crear socket
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error al crear socket");
-        exit(EXIT_FAILURE);
-    }
-
-    // Configurar la dirección del servidor
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
-
-    if (inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) <= 0) {
-        perror("Dirección inválida o no soportada");
-        close(sock_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    // Conectar al servidor
-    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error al conectar con el servidor");
-        close(sock_fd);
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Conectado al servidor.\n");
-
-    // Enviar comandos y recibir respuestas
-    while (1) {
-        printf("Ingresa un comando para ejecutar (o 'salir' para terminar): ");
-        fgets(buffer, BUFFER_SIZE, stdin);
-
-        // Eliminar salto de línea del comando
-        buffer[strcspn(buffer, "\n")] = '\0';
-
-        if (strcmp(buffer, "salir") == 0) {
-            printf("Cerrando conexión...\n");
-            break;
+        if (strcmp(strData, "leave") == 0) {
+            break; // Salir del ciclo si el mensaje es "leave"
         }
 
-        // Enviar comando al servidor
-        send(sock_fd, buffer, strlen(buffer), 0);
+        // Recibe la respuesta del servidor (salida del comando ejecutado)
+        memset(strDataI, 0, sizeof(strDataI));  // Limpiar buffer
+        recv(sockD, strDataI, sizeof(strDataI), 0); // Recibe la salida del servidor
+        printf("Salida del comando: %s\n", strDataI);  // Mostrar la salida
 
-        // Recibir la respuesta del servidor
-        memset(response, 0, BUFFER_SIZE);
-        int bytes_received = recv(sock_fd, response, BUFFER_SIZE - 1, 0);
-        if (bytes_received > 0) {
-            response[bytes_received] = '\0';
-            printf("Respuesta del servidor:\n%s\n", response);
-        }
+    } while (1);
+}
+
+int main(int argc, char const* argv[]) {
+    pthread_t job;
+    int sockD = socket(AF_INET, SOCK_STREAM, 0);
+
+    struct sockaddr_in servAddr;
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(9001);
+    servAddr.sin_addr.s_addr = INADDR_ANY;
+
+    int connectStatus = connect(sockD, (struct sockaddr*)&servAddr, sizeof(servAddr));
+
+    if (connectStatus == -1) {
+        printf("Error al conectar con el servidor...\n");
+        return -1;
     }
 
-    close(sock_fd);
+    printf("Conectado al servidor.\nEscribe 'leave' para salir.\n");
+    pthread_create(&job, NULL, senter, &sockD);
+    pthread_join(job, NULL);  // Espera a que termine el hilo
+
+    close(sockD); // Cerrar socket
     return 0;
 }
